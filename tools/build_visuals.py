@@ -17,6 +17,7 @@ from pathlib import Path
 
 import mpyq
 from PIL import Image
+from game_data import build_metadata, locales
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -137,7 +138,11 @@ def binary_codex_icons(exe, catalog):
         name = names.get(ability, "").encode()
         if not name:
             continue
+        longer_names = [other.encode() for other in names.values()
+                        if len(other.encode()) > len(name) and other.encode().endswith(name)]
         for match in re.finditer(re.escape(name), spells):
+            if any(spells[match.end() - len(other):match.end()] == other for other in longer_names):
+                continue
             tail = spells[match.end():]
             icon = ICON_START.match(tail)
             if icon:
@@ -153,7 +158,7 @@ def binary_codex_icons(exe, catalog):
     return result
 
 
-def icon_bytes(archive, name):
+def icon_bytes(archive, name, allow_remote=True):
     payload = archive.read_file(f"Interface\\Icons\\{name}.blp")
     if payload:
         try:
@@ -163,6 +168,8 @@ def icon_bytes(archive, name):
                 return image.convert("RGB")
         except OSError:
             pass
+    if not allow_remote:
+        return None
     try:
         with urllib.request.urlopen(ICON_URL.format(name.lower()), timeout=12) as response:
             with Image.open(io.BytesIO(response.read())) as image:
@@ -179,6 +186,7 @@ def main():
     archive = mpyq.MPQArchive(str(game / "Data/patch.MPQ"))
     gear = gear_icons(rows)
     codex = binary_codex_icons(exe, catalog)
+    metadata = build_metadata(exe, catalog)
     for key in catalog["codex"]:
         if key not in codex and not key.startswith("legendary:"):
             name = key.replace("_", " ")
@@ -187,6 +195,25 @@ def main():
                 codex[key] = icon
     raw_names = {name for sets in gear.values() for icons in sets for name in icons if name}
     raw_names.update(codex.values())
+    english, _ = locales(exe)
+    abilities = [(english[f"ability.{ability}.name"], codex.get(f"legendary:{ability}"))
+                 for abilities in metadata["codexClasses"].values()
+                 for ability in (entry.split(":", 1)[1] for entry in abilities)]
+    def matching_ability_icon(title):
+        matches = [(len(name), icon) for name, icon in abilities
+                   if icon and len(name) > 3 and name.casefold() in title.casefold()]
+        return max(matches)[1] if matches else None
+
+    for trees in metadata["talents"].values():
+        for tree in trees:
+            raw_names.add(tree["icon"])
+            for talent in tree["talents"]:
+                if not talent["icon"]:
+                    talent["icon"] = matching_ability_icon(talent["name"][0])
+                if talent["icon"]:
+                    raw_names.add(talent["icon"])
+    raw_names.update(entry["icon"] for entry in metadata["achievements"].values() if entry["icon"])
+    raw_names.discard(None)
     output = ROOT / "assets/icons/game"
     output.mkdir(parents=True, exist_ok=True)
     existing = {path.stem for path in output.glob("*.png")}
@@ -205,7 +232,7 @@ def main():
             if name in image_cache:
                 image = image_cache[name]
             else:
-                image = icon_bytes(archive, name)
+                image = icon_bytes(archive, name, allow_remote=length == len(raw))
                 image_cache[name] = image
             if image is not None:
                 target = output / f"{name.lower()}.png"
@@ -225,8 +252,23 @@ def main():
         "gear": {key: [[mapped(name) for name in icons] for icons in sets] for key, sets in gear.items()},
         "codex": {key: mapped(name) for key, name in codex.items() if mapped(name)},
     }
+    for trees in metadata["talents"].values():
+        for tree in trees:
+            tree_icon = mapped(tree["icon"])
+            mapped_talents = [mapped(talent["icon"]) or mapped(matching_ability_icon(talent["name"][0]))
+                              for talent in tree["talents"]]
+            tree["icon"] = tree_icon or next((name for name in mapped_talents if name), None)
+            for talent, name in zip(tree["talents"], mapped_talents):
+                talent["icon"] = name or tree["icon"]
+    for entry in metadata["achievements"].values():
+        entry["icon"] = mapped(entry["icon"])
+    (ROOT / "data/game.json").write_text(json.dumps(metadata, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
     names = sorted({name for sets in visual["gear"].values() for icons in sets for name in icons if name}
-                   | set(visual["codex"].values()))
+                   | set(visual["codex"].values())
+                   | {tree["icon"] for trees in metadata["talents"].values() for tree in trees if tree["icon"]}
+                   | {entry["icon"] for trees in metadata["talents"].values() for tree in trees
+                      for entry in tree["talents"] if entry["icon"]}
+                   | {entry["icon"] for entry in metadata["achievements"].values() if entry["icon"]})
     columns = 16
     rows = math.ceil(len(names) / columns)
     atlas = Image.new("RGBA", (columns * 64, rows * 64))

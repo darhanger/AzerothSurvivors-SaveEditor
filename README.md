@@ -11,9 +11,10 @@ A browser based editor for **Azeroth Survivors** saves. Open an exported `.sav` 
 - Import signed RSE1 saves and verify their signatures, or edit save plaintext directly.
 - Edit unlocked and cleared zones, talent experience and ranks, accessory codex entries, achievements, item collection, equipment, stats, perks, and pets.
 - Unlock the Druid's **Shred** legendary amulet. Its `legendary:shred=4` entry has been confirmed to appear in game after import.
-- Filter collected gear by class or show all classes. The editor also lists the newly available PvP sets for every class, unchecked by default.
-- See item icons for each class, tier, and slot, plus individual codex icons. Legendary amulets show the associated spell icon with an amulet badge.
-- Track talent points earned, spent, and available, with experience progress toward the next point.
+- Browse class gear as a set and slot collection grid, or search the full item list. The PvP sets are shown for every class, unchecked by default.
+- See individual codex icons and legendary amulets grouped by class.
+- Browse all 354 talents in their three game branches, with names, icons and available effect descriptions. The editor shows XP required for the next point and the 51-point cap.
+- Browse achievements by category with game names, descriptions and icons.
 - Switch between English (default) and Russian. The preference is stored locally in your browser.
 - Export a newly signed `.sav` file or copy the RSE1 string. Unknown save lines are preserved when using the form controls.
 
@@ -32,8 +33,9 @@ A browser based editor for **Azeroth Survivors** saves. Open an exported `.sav` 
 | --- | --- | --- |
 | RSE1 container | Analyzed Windows executable | Signature verification and export use the current game's format. |
 | Classes and zones | Game data and verified IDs | Names are available in English and Russian. |
-| Talents | 354 IDs and experience formula from the executable | Costs start at 80 XP and rise by 15 per point, up to 51 points. The game still enforces rank and tree rules. |
-| Codex | Provided save and game data | Includes 141 entries and the confirmed Shred amulet. The quality selector stores 0–4; Undiscovered removes the entry. |
+| Talents | 354 IDs, branch names and XP formula from the executable | Costs start at 80 XP and rise by 15 per point, up to 51 points. Some effect text and exact talent icons are unavailable in the executable data; the game enforces rank and tree rules. |
+| Achievements | 63 save IDs and game definitions | Game titles, descriptions and icons are used where available; zone and class achievements are generated from the game's templates. |
+| Codex | Provided save and game data | Includes 141 entries and the confirmed Shred amulet. The 102 legendary amulets follow the game's class order. The quality selector stores 0–4; Undiscovered removes the entry. |
 | Collected gear | Provided save, game tier names, and WoW item icon index | Item labels describe class, set, and slot; they are not the game's full item titles. |
 | PvP gear | IDs inferred from the existing item ID pattern | Shown as available and unchecked. Verify an edited PvP item in game before making broader changes. |
 
@@ -53,7 +55,7 @@ Open `http://localhost:8000/`. Opening `index.html` through `file://` will not l
 
 The [GitHub Pages workflow](.github/workflows/pages.yml) publishes `index.html`, `styles.css`, `src/`, `data/`, and `assets/` after a push to `main`. The repository's Pages source must be **GitHub Actions**. Save files are excluded by `.gitignore` and are never deployed.
 
-The 23 class/category PNGs in `assets/icons/` were extracted from the local game's `patch.MPQ`. `assets/icons/game/` contains item and codex icons. `tools/build_visuals.py` reads the game's executable for codex icon names and tier names, resolves armor pieces against a [pinned WoW Classic item index](https://github.com/nexus-devs/wow-classic-items/tree/8339771805564c6de7850ff9428be8e841f69622), and exports local PNGs from the MPQ or, when absent, the WoW icon CDN. Starting-tier and PvP gear use representative icons because the save does not identify their exact appearance; a few spell badges also use standard WoW spell icons where the executable omits a path. These are visual approximations only and do not alter save values. To regenerate, install `mpyq` and `Pillow`, then run `python tools/extract_icons.py C:/WoW/Surv/Data` and `python tools/build_visuals.py C:/WoW/Surv`. The website loads one self-hosted `assets/icons/game-atlas.png` for these icons and makes no third-party icon requests at runtime.
+The 23 class/category PNGs in `assets/icons/` were extracted from the local game's `patch.MPQ`. `tools/build_visuals.py` and `tools/game_data.py` extract talent trees, achievement text, codex class order and icon names from the executable into `data/game.json` and `data/visuals.json`. Armor icons are resolved against a [pinned WoW Classic item index](https://github.com/nexus-devs/wow-classic-items/tree/8339771805564c6de7850ff9428be8e841f69622); PNGs come from the MPQ or the WoW icon CDN. Starting-tier and PvP gear, plus talents without an explicit icon path, use representative icons. These are visual approximations only and do not alter save values. To regenerate, install `mpyq` and `Pillow`, then run `python tools/extract_icons.py C:/WoW/Surv/Data` and `python tools/build_visuals.py C:/WoW/Surv`. The website loads one self-hosted `assets/icons/game-atlas.png` and makes no third-party icon requests at runtime.
 
 ## Support
 

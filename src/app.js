@@ -18,6 +18,7 @@ const tabNames = {
 };
 let catalog;
 let visuals;
+let gameData;
 let model;
 let activeTab = "zones";
 let selectedClass = "11";
@@ -67,6 +68,10 @@ function labelFor(id) {
   const legendary = id.startsWith("legendary:");
   const name = id.replace(/^legendary:/, "").replace(/_/g, " ").replace(/\b\w/g, letter => letter.toUpperCase());
   return legendary ? `${t("Легендарный")} · ${name}` : name;
+}
+
+function gameText(pair) {
+  return pair?.[currentLanguage() === "ru" ? 1 : 0] || "";
 }
 
 function field(label, control, grow = false) {
@@ -188,10 +193,21 @@ function renderTalents() {
   body.append(summary, node("div", { className: "talent-xp" },
     node("span", { text: xpLabel }), node("span", { text: `${xp} XP` }),
     node("progress", { max: xpStep, value: xpInStep })));
+  const xpNumber = Number(xp);
+  const maxXp = experienceForPoints(maxTalentPoints);
+  const numberFormat = new Intl.NumberFormat(currentLanguage() === "ru" ? "ru-RU" : "en-US");
+  const number = value => numberFormat.format(value);
+  const xpMetrics = node("div", { className: "talent-xp-metrics" },
+    node("div", {}, node("small", { text: "Опыт для 51 очка" }), node("strong", { text: `${number(maxXp)} XP` })),
+    progress.next === null
+      ? node("div", {}, node("small", { text: "Опыт сверх максимума" }), node("strong", { text: `${number(Math.max(0, xpNumber - maxXp))} XP` }))
+      : node("div", {}, node("small", { text: "До следующего очка" }), node("strong", { text: `${number(progress.next - xpNumber)} XP` })),
+    progress.next === null
+      ? node("div", {}, node("small", { text: "Следующих очков" }), node("strong", { text: "0" }))
+      : node("div", {}, node("small", { text: "До максимума" }), node("strong", { text: `${number(maxXp - xpNumber)} XP` })));
+  body.append(xpMetrics);
   if (spent > progress.earned) body.append(node("p", { className: "hint talent-warning", text: "Потрачено больше очков, чем даёт текущий опыт. Игра может сбросить или отклонить таланты." }));
-  const keys = [...new Set([...(catalog.talents[selectedClass] || []), ...ranks.keys()])];
-  const list = node("div", { className: "grid-list" });
-  for (const id of keys) {
+  const talentInput = id => {
     const input = node("input", { type: "number", min: "0", max: "99", step: "1", value: ranks.get(id) || "0", title: id });
     input.addEventListener("change", () => {
       const rank = Number(input.value);
@@ -199,9 +215,39 @@ function renderTalents() {
       if (rank) ranks.set(id, String(rank)); else ranks.delete(id);
       saveTalents(xpInput.value, ranks);
     });
-    list.append(node("div", { className: "rank-row" }, node("span", { text: labelFor(id) }), input));
+    return input;
+  };
+  const trees = gameData?.talents?.[selectedClass];
+  const known = new Set();
+  if (trees) {
+    const layout = node("div", { className: "talent-trees" });
+    for (const tree of trees) {
+      const treeSpent = tree.talents.reduce((total, talent) => total + (Number(ranks.get(talent.id)) || 0), 0);
+      const section = node("section", { className: "talent-tree" },
+        node("div", { className: "talent-tree-heading" },
+          icon(tree.icon ? `game/${tree.icon}` : `class-${classSlugs[selectedClass]}`),
+          node("h4", { text: gameText(tree.name) }), node("small", { text: `${treeSpent}` })));
+      for (const talent of tree.talents) {
+        known.add(talent.id);
+        const description = gameText(talent.description);
+        section.append(node("div", { className: `talent-node${Number(ranks.get(talent.id)) ? " selected" : ""}`, title: talent.id },
+          icon(talent.icon ? `game/${talent.icon}` : `class-${classSlugs[selectedClass]}`),
+          node("div", { className: "talent-copy" }, node("strong", { text: gameText(talent.name) }),
+            ...(description ? [node("details", { className: "talent-description" },
+              node("summary", { text: description.replaceAll("{v}", "…"), title: description.replaceAll("{v}", "…") }))] : [])),
+          talentInput(talent.id)));
+      }
+      layout.append(section);
+    }
+    body.append(node("p", { className: "hint", text: "В описаниях талантов … означает значение, которое игра рассчитывает по рангу." }), layout);
   }
-  body.append(list);
+  const extras = [...new Set([...(trees ? [] : catalog.talents[selectedClass] || []), ...ranks.keys()])].filter(id => !known.has(id));
+  if (extras.length) {
+    if (trees) body.append(node("h4", { className: "subheading", text: "Дополнительные ID талантов" }));
+    const list = node("div", { className: "grid-list" });
+    for (const id of extras) list.append(node("div", { className: "rank-row" }, node("span", { text: labelFor(id) }), talentInput(id)));
+    body.append(list);
+  }
   body.append(addForm("ID таланта, например imp_wrath", id => {
     if (!/^[a-z][a-z0-9_]*$/.test(id)) return showMessage("Ожидался ID вида imp_wrath.", "error");
     ranks.set(id, "1");
@@ -237,36 +283,85 @@ function renderCodex() {
       button("Открыть амулет Shred", () => { model.setKey("seen", "legendary:shred", "4"); render(); }, "primary")));
   }
   const keys = [...new Set([...catalog.codex, ...seen.keys()])].filter(id => codexCategory(id) === codexGroup);
-  const list = node("div", { className: "grid-list" });
-  for (const id of keys) {
+  const codexRow = id => {
     const current = seen.get(id);
     const select = node("select", { title: id });
     select.append(node("option", { value: "", text: "Скрыт" }));
     for (let rarity = 0; rarity <= 4; rarity++) select.append(node("option", { value: String(rarity), text: `${setName(rarity)} · ${rarity}` }));
     select.value = current ?? "";
     select.addEventListener("change", () => { model.setKey("seen", id, select.value || null); render(); });
-    list.append(node("div", { className: "rank-row" }, codexIcon(id), node("span", { text: labelFor(id), title: id }), select));
+    return node("div", { className: "rank-row" }, codexIcon(id), node("span", { text: labelFor(id), title: id }), select);
+  };
+  if (codexGroup === "legendary" && gameData?.codexClasses) {
+    const grouped = new Set();
+    for (const [classId] of catalog.classes) {
+      const classKeys = gameData.codexClasses[classId] || [];
+      for (const id of classKeys) grouped.add(id);
+      const section = node("section", { className: "codex-class-section" });
+      section.append(node("div", { className: "codex-class-heading" }, icon(`class-${classSlugs[classId]}`),
+        node("strong", { text: className(classId) }),
+        node("small", { text: `${classKeys.filter(id => seen.has(id)).length} / ${classKeys.length}` })));
+      const list = node("div", { className: "grid-list" });
+      for (const id of classKeys) list.append(codexRow(id));
+      section.append(list);
+      body.append(section);
+    }
+    const unknown = keys.filter(id => !grouped.has(id));
+    if (unknown.length) {
+      body.append(node("h4", { className: "subheading", text: "Другие амулеты" }));
+      const list = node("div", { className: "grid-list" });
+      for (const id of unknown) list.append(codexRow(id));
+      body.append(list);
+    }
+  } else {
+    const list = node("div", { className: "grid-list" });
+    for (const id of keys) list.append(codexRow(id));
+    body.append(list);
   }
-  body.append(list, addForm("ID кодекса, например legendary:shred", id => {
+  body.append(addForm("ID кодекса, например legendary:shred", id => {
     model.setKey("seen", id, id.startsWith("legendary:") ? "4" : "0");
   }));
 }
 
 function renderAchievements() {
   const achieved = new Set(model.list("ach"));
-  const keys = [...new Set([...catalog.achievements, ...achieved])].sort();
-  const list = node("div", { className: "grid-list" });
-  for (const id of keys) {
-    const check = node("input", { type: "checkbox", checked: achieved.has(id) });
-    check.addEventListener("change", () => {
-      model.toggleList("ach", id, check.checked);
-      if (check.checked) model.setKey("achat", id, String(Math.floor(Date.now() / 1000)));
-      else model.setKey("achat", id, null);
-      render();
-    });
-    list.append(node("label", { className: "check-row" }, check, node("span", { text: labelFor(id) })));
+  const unlockTimes = model.keyed("achat");
+  const keys = [...new Set([...catalog.achievements, ...achieved])];
+  body.append(node("p", { className: "achievement-total", text: localized(
+    `${keys.filter(id => achieved.has(id)).length} / ${keys.length} achievements earned`,
+    `Получено достижений: ${keys.filter(id => achieved.has(id)).length} / ${keys.length}`) }));
+  const groups = [
+    ["classes", "Победы классов"], ["collection", "Коллекция"],
+    ["challenges", "Испытания"], ["counts", "Общий прогресс"],
+    ["zones", "Зоны"], ["other", "Другие достижения"],
+  ];
+  for (const [category, heading] of groups) {
+    const categoryKeys = keys.filter(id => (gameData?.achievements?.[id]?.category || "other") === category);
+    if (!categoryKeys.length) continue;
+    const list = node("div", { className: "grid-list achievement-list" });
+    for (const id of categoryKeys) {
+      const entry = gameData?.achievements?.[id];
+      const check = node("input", { type: "checkbox", checked: achieved.has(id) });
+      check.addEventListener("change", () => {
+        model.toggleList("ach", id, check.checked);
+        if (check.checked) model.setKey("achat", id, String(Math.floor(Date.now() / 1000)));
+        else model.setKey("achat", id, null);
+        render();
+      });
+      const image = id.startsWith("class:") ? icon(`class-${id.split(":")[1]}`)
+        : entry?.icon ? icon(`game/${entry.icon}`) : icon("codex-other");
+      const timestamp = Number(unlockTimes.get(id));
+      const date = achieved.has(id) && Number.isFinite(timestamp) && timestamp > 0
+        ? new Date(timestamp * 1000).toLocaleDateString(currentLanguage() === "ru" ? "ru-RU" : "en-US") : "";
+      list.append(node("label", { className: `check-row achievement-card${achieved.has(id) ? " earned" : ""}`, title: id },
+        check, image, node("span", { className: "achievement-copy" },
+          node("strong", { text: entry ? gameText(entry.name) : labelFor(id) }),
+          ...(entry?.description ? [node("small", { text: gameText(entry.description) })] : []),
+          ...(date ? [node("small", { className: "achievement-date", text: date })] : []))));
+    }
+    body.append(node("h4", { className: "subheading", text: heading }), list);
   }
-  body.append(list, addForm("ID достижения, например zone:ab", id => {
+  body.append(addForm("ID достижения, например zone:ab", id => {
     model.toggleList("ach", id, true);
     model.setKey("achat", id, String(Math.floor(Date.now() / 1000)));
   }));
@@ -291,7 +386,16 @@ function availableItems(collected) {
 function renderItems() {
   const search = node("input", { type: "search", placeholder: "Поиск по ID предмета", value: itemQuery });
   search.addEventListener("input", () => {
+    const wasSearching = Boolean(itemQuery);
     itemQuery = search.value.trim().toLocaleLowerCase();
+    if (itemScope === "class" && wasSearching !== Boolean(itemQuery)) {
+      const caret = search.selectionStart;
+      render();
+      const next = body.querySelector('input[type="search"]');
+      next.focus();
+      next.setSelectionRange(caret, caret);
+      return;
+    }
     const cards = body.querySelectorAll("[data-item-search]");
     for (const card of cards) card.hidden = !card.dataset.itemSearch.includes(itemQuery);
   });
@@ -301,22 +405,58 @@ function renderItems() {
   scope.addEventListener("change", () => { itemScope = scope.value; render(); });
   body.append(node("div", { className: "toolbar" }, field("Предметы аккаунта", search, true), classPicker(), field("Показывать", scope)));
   const items = new Set(model.list("items"));
-  const itemList = node("div", { className: "grid-list item-list" });
-  for (const id of availableItems(items)) {
-    const details = itemDetails(id);
-    if (itemScope === "class" && details?.classId !== selectedClass) continue;
-    const check = node("input", { type: "checkbox", checked: items.has(id) });
-    check.addEventListener("change", () => { model.toggleList("items", id, check.checked); render(); });
-    const label = details ? `${className(details.classId)} · ${setName(details.set)} · ${slotName(details.slot)}` : localized(`Item ${id}`, `Предмет ${id}`);
-    const row = node("label", { className: `check-row item-row${items.has(id) ? "" : " uncollected"}`, dataset: { itemSearch: `${id} ${label}`.toLocaleLowerCase() } }, check,
-      ...(details ? [icon(visuals?.gear[details.classId]?.[details.set]?.[details.slot]
-        ? `game/${visuals.gear[details.classId][details.set][details.slot]}`
-        : details.set === 5 ? "pvp" : `slot-${slotSlugs[details.slot]}`)] : []),
-      node("span", { text: label }), node("small", { text: id }));
-    row.hidden = !row.dataset.itemSearch.includes(itemQuery);
-    itemList.append(row);
+  if (itemScope === "class" && !itemQuery) {
+    const slots = selectedClass === "4" || selectedClass === "7" ? 10 : 9;
+    const equipped = new Set(classCsv("equip").map(entry => entry.split(":")[1]));
+    const grid = node("div", { className: "collection-grid" });
+    grid.style.gridTemplateColumns = `minmax(120px, 1fr) repeat(${slots}, 54px)`;
+    grid.append(node("div", { className: "collection-corner", text: "Комплект" }));
+    for (let slot = 0; slot < slots; slot++) grid.append(node("div", { className: "collection-slot", text: slotName(slot) }));
+    for (let set = 0; set <= 5; set++) {
+      const setIds = Array.from({ length: slots }, (_, slot) => `1${selectedClass.padStart(2, "0")}${slot}${set}0`);
+      const setTitle = gameText(gameData?.sets?.[selectedClass]?.[set]);
+      grid.append(node("div", { className: `collection-set tier-${set}` },
+        node("strong", { text: setName(set) }),
+        ...(setTitle ? [node("small", { text: setTitle })] : []),
+        node("small", { text: `${setIds.filter(id => items.has(id)).length} / ${slots}` })));
+      for (let slot = 0; slot < slots; slot++) {
+        const id = setIds[slot];
+        const name = visuals?.gear?.[selectedClass]?.[set]?.[slot];
+        const title = `${className(selectedClass)} · ${setName(set)} · ${slotName(slot)} · ${id}`;
+        const check = node("input", { type: "checkbox", checked: items.has(id), title });
+        check.addEventListener("change", () => { model.toggleList("items", id, check.checked); render(); });
+        grid.append(node("label", { className: `collection-cell tier-${set}${items.has(id) ? " collected" : " uncollected"}`, title },
+          icon(name ? `game/${name}` : set === 5 ? "pvp" : `slot-${slotSlugs[slot]}`),
+          check, ...(equipped.has(id) ? [node("span", { className: "equipped-mark", text: "E" })] : [])));
+      }
+    }
+    const total = slots * 6;
+    const collected = Array.from({ length: total }, (_, index) => `1${selectedClass.padStart(2, "0")}${index % slots}${Math.floor(index / slots)}0`)
+      .filter(id => items.has(id)).length;
+    body.append(node("p", { className: "collection-summary", text: localized(
+      `${className(selectedClass)} · ${collected} / ${total} pieces collected. Check an icon to change the collection. E = equipped.`,
+      `${className(selectedClass)} · собрано ${collected} / ${total}. Отмечайте предметы нажатием на иконку. E = надето.`) }),
+      node("div", { className: "collection-scroll" }, grid));
+  } else {
+    const itemList = node("div", { className: "grid-list item-list" });
+    for (const id of availableItems(items)) {
+      const details = itemDetails(id);
+      if (itemScope === "class" && details?.classId !== selectedClass) continue;
+      const check = node("input", { type: "checkbox", checked: items.has(id) });
+      check.addEventListener("change", () => { model.toggleList("items", id, check.checked); render(); });
+      const label = details ? `${className(details.classId)} · ${setName(details.set)} · ${slotName(details.slot)}` : localized(`Item ${id}`, `Предмет ${id}`);
+      const setTitle = details ? gameText(gameData?.sets?.[details.classId]?.[details.set]) : "";
+      const row = node("label", { className: `check-row item-row${items.has(id) ? "" : " uncollected"}`, dataset: { itemSearch: `${id} ${label} ${setTitle}`.toLocaleLowerCase() } }, check,
+        ...(details ? [icon(visuals?.gear?.[details.classId]?.[details.set]?.[details.slot]
+          ? `game/${visuals.gear[details.classId][details.set][details.slot]}`
+          : details.set === 5 ? "pvp" : `slot-${slotSlugs[details.slot]}`)] : []),
+        node("span", { text: label }), node("small", { text: id }));
+      row.hidden = !row.dataset.itemSearch.includes(itemQuery);
+      itemList.append(row);
+    }
+    body.append(itemList);
   }
-  body.append(itemList, addForm("Числовой ID предмета", id => {
+  body.append(addForm("Числовой ID предмета", id => {
     if (!/^\d+$/.test(id)) return showMessage("ID предмета должен быть числом.", "error");
     model.toggleList("items", id, true);
     if (itemDetails(id)?.classId !== selectedClass) itemScope = "all";
@@ -458,10 +598,15 @@ async function start() {
     }
   });
   try {
-    const [response, visualResponse] = await Promise.all([fetch("./data/catalog.json"), fetch("./data/visuals.json").catch(() => null)]);
+    const [response, visualResponse, gameResponse] = await Promise.all([
+      fetch("./data/catalog.json"),
+      fetch("./data/visuals.json").catch(() => null),
+      fetch("./data/game.json").catch(() => null),
+    ]);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     catalog = await response.json();
     visuals = visualResponse?.ok ? await visualResponse.json() : null;
+    gameData = gameResponse?.ok ? await gameResponse.json() : null;
   } catch {
     showMessage("Не удалось загрузить каталог. Откройте страницу через веб-сервер или GitHub Pages.", "error");
     return;

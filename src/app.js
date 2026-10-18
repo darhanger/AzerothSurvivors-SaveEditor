@@ -17,18 +17,30 @@ const tabNames = {
   raw: ["Открытый текст", "Правьте любые строки напрямую. Неизвестные поля сохраняются при экспорте."]
 };
 let catalog;
+let visuals;
 let model;
 let activeTab = "zones";
 let selectedClass = "11";
 let codexGroup = "amulets";
 let itemQuery = "";
+let itemScope = "class";
 let sourceName = "AzerothSurvivors-edited.sav";
 let loadedFormat = "";
 const classSlugs = { "1": "warrior", "2": "paladin", "3": "hunter", "4": "rogue", "5": "priest", "7": "shaman", "8": "mage", "9": "warlock", "11": "druid" };
 const slotSlugs = ["head", "shoulder", "chest", "waist", "legs", "feet", "wrist", "hands", "main-hand", "off-hand"];
 
 function icon(name) {
-  return node("img", { className: "game-icon", src: `./assets/icons/${name}.png`, alt: "", loading: "lazy" });
+  if (name.startsWith("game/")) {
+    const atlas = visuals?.atlas;
+    const index = atlas?.index[name.slice(5)];
+    if (index !== undefined) {
+      const element = node("span", { className: "game-icon atlas-icon", ariaHidden: "true" });
+      element.style.backgroundSize = `${atlas.columns * 100}% ${atlas.rows * 100}%`;
+      element.style.backgroundPosition = `${index % atlas.columns / (atlas.columns - 1) * 100}% ${Math.floor(index / atlas.columns) / (atlas.rows - 1) * 100}%`;
+      return element;
+    }
+  }
+  return node("img", { className: "game-icon", src: `./assets/icons/${name}.png`, alt: "" });
 }
 
 function node(tag, options = {}, ...children) {
@@ -139,6 +151,18 @@ function saveTalents(xp, ranks) {
   render();
 }
 
+const maxTalentPoints = 51;
+
+function experienceForPoints(points) {
+  return points * 80 + 15 * points * (points - 1) / 2;
+}
+
+function talentProgress(experience) {
+  let earned = 0;
+  while (earned < maxTalentPoints && experience >= experienceForPoints(earned + 1)) earned++;
+  return { earned, previous: experienceForPoints(earned), next: earned < maxTalentPoints ? experienceForPoints(earned + 1) : null };
+}
+
 function renderTalents() {
   const fields = model.fields("talent", selectedClass);
   const xp = fields?.[2] || "0";
@@ -149,6 +173,22 @@ function renderTalents() {
     saveTalents(xpInput.value, ranks);
   });
   body.append(node("div", { className: "toolbar" }, classPicker(), field("Опыт талантов", xpInput)));
+  const progress = talentProgress(Number(xp));
+  const spent = [...ranks.values()].reduce((sum, rank) => sum + (Number(rank) || 0), 0);
+  const free = Math.max(0, progress.earned - spent);
+  const summary = node("div", { className: "talent-summary" },
+    node("div", { className: "talent-stat" }, node("small", { text: "Получено очков" }), node("strong", { text: `${progress.earned} / ${maxTalentPoints}` })),
+    node("div", { className: "talent-stat" }, node("small", { text: "Потрачено" }), node("strong", { text: String(spent) })),
+    node("div", { className: "talent-stat" }, node("small", { text: "Свободно" }), node("strong", { text: String(free) })));
+  const xpStep = progress.next === null ? 1 : progress.next - progress.previous;
+  const xpInStep = progress.next === null ? 1 : Math.max(0, Number(xp) - progress.previous);
+  const xpLabel = progress.next === null
+    ? localized("Maximum reached", "Достигнут максимум")
+    : localized(`${xpInStep} / ${xpStep} XP toward next point`, `${xpInStep} / ${xpStep} опыта на следующее очко`);
+  body.append(summary, node("div", { className: "talent-xp" },
+    node("span", { text: xpLabel }), node("span", { text: `${xp} XP` }),
+    node("progress", { max: xpStep, value: xpInStep })));
+  if (spent > progress.earned) body.append(node("p", { className: "hint talent-warning", text: "Потрачено больше очков, чем даёт текущий опыт. Игра может сбросить или отклонить таланты." }));
   const keys = [...new Set([...(catalog.talents[selectedClass] || []), ...ranks.keys()])];
   const list = node("div", { className: "grid-list" });
   for (const id of keys) {
@@ -176,12 +216,20 @@ function codexCategory(id) {
   return "other";
 }
 
+function codexIcon(id) {
+  const name = visuals?.codex[id];
+  if (!name) return icon(`codex-${codexGroup}`);
+  if (!id.startsWith("legendary:")) return icon(`game/${name}`);
+  return node("span", { className: "codex-icon" }, icon(`game/${name}`), icon("codex-legendary"));
+}
+
 function renderCodex() {
   const groupSelect = node("select");
   for (const [id, name] of [["amulets", "Обычные амулеты"], ["legendary", "Легендарные амулеты"], ["other", "Кольца и аксессуары"]]) groupSelect.append(node("option", { value: id, text: name }));
   groupSelect.value = codexGroup;
   groupSelect.addEventListener("change", () => { codexGroup = groupSelect.value; render(); });
   body.append(node("div", { className: "toolbar" }, field("Категория", groupSelect)));
+  body.append(node("p", { className: "hint", text: "Скрыт удаляет запись из кодекса. Значения 0–4 отмечают предмет найденным и задают сохранённое качество: обычное, необычное, редкое, эпическое или легендарное." }));
   const seen = model.keyed("seen");
   if (codexGroup === "legendary" && !seen.has("legendary:shred")) {
     body.append(node("div", { className: "inline-form" },
@@ -194,10 +242,10 @@ function renderCodex() {
     const current = seen.get(id);
     const select = node("select", { title: id });
     select.append(node("option", { value: "", text: "Скрыт" }));
-    for (let rarity = 0; rarity <= 4; rarity++) select.append(node("option", { value: String(rarity), text: `${t("Открыт")} · ${rarity}` }));
+    for (let rarity = 0; rarity <= 4; rarity++) select.append(node("option", { value: String(rarity), text: `${setName(rarity)} · ${rarity}` }));
     select.value = current ?? "";
     select.addEventListener("change", () => { model.setKey("seen", id, select.value || null); render(); });
-    list.append(node("div", { className: "rank-row" }, icon(`codex-${codexGroup}`), node("span", { text: labelFor(id), title: id }), select));
+    list.append(node("div", { className: "rank-row" }, codexIcon(id), node("span", { text: labelFor(id), title: id }), select));
   }
   body.append(list, addForm("ID кодекса, например legendary:shred", id => {
     model.setKey("seen", id, id.startsWith("legendary:") ? "4" : "0");
@@ -247,16 +295,23 @@ function renderItems() {
     const cards = body.querySelectorAll("[data-item-search]");
     for (const card of cards) card.hidden = !card.dataset.itemSearch.includes(itemQuery);
   });
-  body.append(node("div", { className: "toolbar" }, field("Предметы аккаунта", search, true), classPicker()));
+  const scope = node("select");
+  scope.append(node("option", { value: "class", text: "Выбранный класс" }), node("option", { value: "all", text: "Все классы" }));
+  scope.value = itemScope;
+  scope.addEventListener("change", () => { itemScope = scope.value; render(); });
+  body.append(node("div", { className: "toolbar" }, field("Предметы аккаунта", search, true), classPicker(), field("Показывать", scope)));
   const items = new Set(model.list("items"));
   const itemList = node("div", { className: "grid-list item-list" });
   for (const id of availableItems(items)) {
+    const details = itemDetails(id);
+    if (itemScope === "class" && details?.classId !== selectedClass) continue;
     const check = node("input", { type: "checkbox", checked: items.has(id) });
     check.addEventListener("change", () => { model.toggleList("items", id, check.checked); render(); });
-    const details = itemDetails(id);
     const label = details ? `${className(details.classId)} · ${setName(details.set)} · ${slotName(details.slot)}` : localized(`Item ${id}`, `Предмет ${id}`);
     const row = node("label", { className: `check-row item-row${items.has(id) ? "" : " uncollected"}`, dataset: { itemSearch: `${id} ${label}`.toLocaleLowerCase() } }, check,
-      ...(details ? [icon(details.set === 5 ? "pvp" : `slot-${slotSlugs[details.slot]}`)] : []),
+      ...(details ? [icon(visuals?.gear[details.classId]?.[details.set]?.[details.slot]
+        ? `game/${visuals.gear[details.classId][details.set][details.slot]}`
+        : details.set === 5 ? "pvp" : `slot-${slotSlugs[details.slot]}`)] : []),
       node("span", { text: label }), node("small", { text: id }));
     row.hidden = !row.dataset.itemSearch.includes(itemQuery);
     itemList.append(row);
@@ -264,6 +319,7 @@ function renderItems() {
   body.append(itemList, addForm("Числовой ID предмета", id => {
     if (!/^\d+$/.test(id)) return showMessage("ID предмета должен быть числом.", "error");
     model.toggleList("items", id, true);
+    if (itemDetails(id)?.classId !== selectedClass) itemScope = "all";
   }));
   body.append(node("h4", { className: "subheading", text: "Экипировка класса" }));
   const equip = classCsv("equip");
@@ -402,9 +458,10 @@ async function start() {
     }
   });
   try {
-    const response = await fetch("./data/catalog.json");
+    const [response, visualResponse] = await Promise.all([fetch("./data/catalog.json"), fetch("./data/visuals.json").catch(() => null)]);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     catalog = await response.json();
+    visuals = visualResponse?.ok ? await visualResponse.json() : null;
   } catch {
     showMessage("Не удалось загрузить каталог. Откройте страницу через веб-сервер или GitHub Pages.", "error");
     return;

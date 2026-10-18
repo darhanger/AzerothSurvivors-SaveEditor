@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Локальный редактор сохранений Azeroth Survivors. Импорт RSE1, редактирование прогресса и экспорт .sav.">
+  <title>Azeroth Survivors — редактор сохранений</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script type="module" src="./src/app.js"></script>
+</head>
+<body>
+  <div class="ambient" aria-hidden="true"></div>
+  <header class="site-header shell">
+    <div class="brand-mark" aria-hidden="true">AS</div>
+    <div class="brand-copy"><strong>AZEROTH SURVIVORS</strong><span>SAVE EDITOR</span></div>
+    <span class="local-badge">Работает в браузере · без загрузки на сервер</span>
+  </header>
+
+  <main class="shell">
+    <section class="hero">
+      <p class="eyebrow">АРХИВ ПРОГРЕССА / RSE1</p>
+      <h1>Настройте своё сохранение</h1>
+      <p>Откройте <code>.sav</code> или вставьте строку RSE1. Меняйте прогресс, проверяйте открытый текст и экспортируйте новый файл для импорта в игру.</p>
+    </section>
+
+    <section class="card import-card" aria-labelledby="import-title">
+      <div class="section-heading"><div><p class="eyebrow">01 / ИМПОРТ</p><h2 id="import-title">Загрузить сохранение</h2></div><span id="format-status" class="pill">Ожидание файла</span></div>
+      <div class="import-grid">
+        <label id="drop-zone" class="drop-zone" for="save-file"><span class="upload-icon">⇧</span><strong>Выберите файл или перетащите сюда</strong><small>.sav или .txt, до 2 МБ</small><input id="save-file" type="file" accept=".sav,.txt,text/plain"></label>
+        <div class="paste-zone"><label for="save-input">Или вставьте строку / открытый текст</label><textarea id="save-input" rows="5" spellcheck="false" placeholder="RSE1:VnWO…&#10;или&#10;pick|…"></textarea><button id="load-text" class="button secondary" type="button">Открыть вставленный текст</button></div>
+      </div>
+      <p id="message" class="message" role="status" aria-live="polite">Файл читается только на вашем устройстве.</p>
+    </section>
+
+    <section id="workspace" class="workspace" hidden>
+      <div class="workspace-top">
+        <div><p class="eyebrow">02 / РЕДАКТОР</p><h2>Прогресс аккаунта</h2><p id="save-summary" class="muted"></p></div>
+        <div class="export-actions"><button id="copy-save" class="button secondary" type="button">Скопировать RSE1</button><button id="download-save" class="button primary" type="button">Скачать .sav</button></div>
+      </div>
+      <div class="editor-layout">
+        <nav class="tabs" aria-label="Разделы редактора">
+          <button class="tab active" data-tab="zones" type="button">Зоны</button>
+          <button class="tab" data-tab="talents" type="button">Таланты</button>
+          <button class="tab" data-tab="codex" type="button">Кодекс</button>
+          <button class="tab" data-tab="achievements" type="button">Достижения</button>
+          <button class="tab" data-tab="items" type="button">Предметы и экипировка</button>
+          <button class="tab" data-tab="other" type="button">Прочее</button>
+          <button class="tab" data-tab="raw" type="button">Открытый текст</button>
+        </nav>
+        <div class="panel card">
+          <div id="panel-header" class="panel-header"></div>
+          <div id="panel-body"></div>
+        </div>
+      </div>
+      <p class="footnote">Импорт в игру заменяет текущий прогресс. Сохраните оригинальный файл до проверки результата в игре. Неизвестные строки сохраняются при редактировании через формы.</p>
+    </section>
+  </main>
+  <footer class="shell footer"><span>Независимый инструмент для Azeroth Survivors</span><span>Формат RSE1 · локальная обработка</span></footer>
+</body>
+</html>

@@ -1,4 +1,5 @@
 import { decodeSave, encodeSave, isSealed } from "./codec.js";
+import { className, currentLanguage, equipmentSlotName, localizeStatic, localized, setLanguage, setName, slotName, t, zoneName } from "./i18n.js";
 import { SaveModel } from "./model.js";
 
 const $ = selector => document.querySelector(selector);
@@ -22,29 +23,38 @@ let selectedClass = "11";
 let codexGroup = "amulets";
 let itemQuery = "";
 let sourceName = "AzerothSurvivors-edited.sav";
+let loadedFormat = "";
+const classSlugs = { "1": "warrior", "2": "paladin", "3": "hunter", "4": "rogue", "5": "priest", "7": "shaman", "8": "mage", "9": "warlock", "11": "druid" };
+const slotSlugs = ["head", "shoulder", "chest", "waist", "legs", "feet", "wrist", "hands", "main-hand", "off-hand"];
+
+function icon(name) {
+  return node("img", { className: "game-icon", src: `./assets/icons/${name}.png`, alt: "", loading: "lazy" });
+}
 
 function node(tag, options = {}, ...children) {
   const element = document.createElement(tag);
   for (const [key, value] of Object.entries(options)) {
     if (key === "className") element.className = value;
-    else if (key === "text") element.textContent = value;
+    else if (key === "text") element.textContent = t(value);
     else if (key === "value") element.value = value;
     else if (key === "checked") element.checked = value;
     else if (key === "dataset") Object.assign(element.dataset, value);
-    else element[key] = value;
+    else element[key] = key === "placeholder" || key === "title" ? t(value) : value;
   }
   element.append(...children);
   return element;
 }
 
 function showMessage(text, kind = "") {
-  message.textContent = text;
+  message.textContent = t(text);
   message.className = `message ${kind}`;
 }
 
 function labelFor(id) {
-  if (id === "legendary:shred") return "Shred · амулет друида";
-  return id.replace(/^legendary:/, "Легендарный · ").replace(/_/g, " ");
+  if (id === "legendary:shred") return t("Shred · амулет друида");
+  const legendary = id.startsWith("legendary:");
+  const name = id.replace(/^legendary:/, "").replace(/_/g, " ").replace(/\b\w/g, letter => letter.toUpperCase());
+  return legendary ? `${t("Легендарный")} · ${name}` : name;
 }
 
 function field(label, control, grow = false) {
@@ -72,10 +82,10 @@ function addForm(placeholder, action) {
 
 function classPicker() {
   const select = node("select", { value: selectedClass });
-  for (const [id, name] of catalog.classes) select.append(node("option", { value: id, text: `${name} · ${id}` }));
+  for (const [id] of catalog.classes) select.append(node("option", { value: id, text: className(id) }));
   select.value = selectedClass;
   select.addEventListener("change", () => { selectedClass = select.value; render(); });
-  return field("Класс", select);
+  return field("Класс", node("div", { className: "picker-with-icon" }, icon(`class-${classSlugs[selectedClass]}`), select));
 }
 
 function classCsv(type) {
@@ -93,8 +103,8 @@ function renderZones() {
   const current = model.fields("open", selectedClass)?.[2] || "";
   const select = node("select");
   select.append(node("option", { value: "", text: "Не задана" }));
-  for (const [id, name] of catalog.zones) select.append(node("option", { value: id, text: name }));
-  if (current && !catalog.zones.some(([id]) => id === current)) select.append(node("option", { value: current, text: `${current} · неизвестная зона` }));
+  for (const [id] of catalog.zones) select.append(node("option", { value: id, text: zoneName(id) }));
+  if (current && !catalog.zones.some(([id]) => id === current)) select.append(node("option", { value: current, text: `${current} · ${t("неизвестная зона")}` }));
   select.value = current;
   select.addEventListener("change", () => {
     if (select.value) model.set("open", [selectedClass, select.value], selectedClass);
@@ -105,13 +115,13 @@ function renderZones() {
   body.append(toolbar, node("h4", { className: "subheading", text: "Пройденные зоны" }));
   const beaten = new Set(classCsv("beat"));
   const list = node("div", { className: "grid-list" });
-  for (const [id, name] of catalog.zones) {
+  for (const [id] of catalog.zones) {
     const check = node("input", { type: "checkbox", checked: beaten.has(id) });
     check.addEventListener("change", () => {
       if (check.checked) beaten.add(id); else beaten.delete(id);
       setClassCsv("beat", [...beaten]);
     });
-    list.append(node("label", { className: "check-row" }, check, node("span", { text: name }), node("small", { text: id })));
+    list.append(node("label", { className: "check-row" }, check, node("span", { text: zoneName(id) }), node("small", { text: id })));
   }
   body.append(list, node("p", { className: "hint", text: "Игра может требовать согласованности открытой зоны и списка побед. Проверьте результат после импорта." }));
 }
@@ -184,10 +194,10 @@ function renderCodex() {
     const current = seen.get(id);
     const select = node("select", { title: id });
     select.append(node("option", { value: "", text: "Скрыт" }));
-    for (let rarity = 0; rarity <= 4; rarity++) select.append(node("option", { value: String(rarity), text: `Открыт · ${rarity}` }));
+    for (let rarity = 0; rarity <= 4; rarity++) select.append(node("option", { value: String(rarity), text: `${t("Открыт")} · ${rarity}` }));
     select.value = current ?? "";
     select.addEventListener("change", () => { model.setKey("seen", id, select.value || null); render(); });
-    list.append(node("div", { className: "rank-row" }, node("span", { text: labelFor(id), title: id }), select));
+    list.append(node("div", { className: "rank-row" }, icon(`codex-${codexGroup}`), node("span", { text: labelFor(id), title: id }), select));
   }
   body.append(list, addForm("ID кодекса, например legendary:shred", id => {
     model.setKey("seen", id, id.startsWith("legendary:") ? "4" : "0");
@@ -215,24 +225,40 @@ function renderAchievements() {
   body.append(node("p", { className: "hint", text: "При включении ставится текущее время получения. Некоторые достижения игра может пересчитать по статистике." }));
 }
 
+function itemDetails(id) {
+  const match = /^1(\d{2})(\d)(\d)0$/.exec(id);
+  if (!match || !classSlugs[String(Number(match[1]))] || Number(match[3]) > 5) return null;
+  return { classId: String(Number(match[1])), slot: Number(match[2]), set: Number(match[3]) };
+}
+
+function availableItems(collected) {
+  const ids = new Set([...catalog.items, ...collected]);
+  for (const [classId] of catalog.classes) {
+    const slots = classId === "4" || classId === "7" ? 10 : 9;
+    for (let slot = 0; slot < slots; slot++) ids.add(`1${classId.padStart(2, "0")}${slot}50`);
+  }
+  return [...ids].sort();
+}
+
 function renderItems() {
   const search = node("input", { type: "search", placeholder: "Поиск по ID предмета", value: itemQuery });
   search.addEventListener("input", () => {
-    itemQuery = search.value.trim();
-    const cards = body.querySelectorAll("[data-item-id]");
-    for (const card of cards) card.hidden = !card.dataset.itemId.includes(itemQuery);
+    itemQuery = search.value.trim().toLocaleLowerCase();
+    const cards = body.querySelectorAll("[data-item-search]");
+    for (const card of cards) card.hidden = !card.dataset.itemSearch.includes(itemQuery);
   });
   body.append(node("div", { className: "toolbar" }, field("Предметы аккаунта", search, true), classPicker()));
   const items = new Set(model.list("items"));
   const itemList = node("div", { className: "grid-list item-list" });
-  const classNames = new Map(catalog.classes);
-  for (const id of [...new Set([...catalog.items, ...items])].sort()) {
+  for (const id of availableItems(items)) {
     const check = node("input", { type: "checkbox", checked: items.has(id) });
     check.addEventListener("change", () => { model.toggleList("items", id, check.checked); render(); });
-    const itemClass = classNames.get(String(Number(id.slice(1, 3))));
-    const row = node("label", { className: "check-row", dataset: { itemId: id } }, check,
-      node("span", { text: itemClass ? `${itemClass} · ${id}` : id }));
-    row.hidden = !id.includes(itemQuery);
+    const details = itemDetails(id);
+    const label = details ? `${className(details.classId)} · ${setName(details.set)} · ${slotName(details.slot)}` : localized(`Item ${id}`, `Предмет ${id}`);
+    const row = node("label", { className: `check-row item-row${items.has(id) ? "" : " uncollected"}`, dataset: { itemSearch: `${id} ${label}`.toLocaleLowerCase() } }, check,
+      ...(details ? [icon(details.set === 5 ? "pvp" : `slot-${slotSlugs[details.slot]}`)] : []),
+      node("span", { text: label }), node("small", { text: id }));
+    row.hidden = !row.dataset.itemSearch.includes(itemQuery);
     itemList.append(row);
   }
   body.append(itemList, addForm("Числовой ID предмета", id => {
@@ -245,7 +271,7 @@ function renderItems() {
   for (const entry of equip) {
     const [slot, id] = entry.split(":");
     equipList.append(node("div", { className: "rank-row" },
-      node("span", { text: `Слот ${slot} · ${id}` }),
+      node("span", { text: `${equipmentSlotName(Number(slot))} · ${id}` }),
       button("Убрать", () => setClassCsv("equip", equip.filter(value => value !== entry)), "danger small-button")));
   }
   const slotInput = node("input", { type: "number", min: "0", step: "1", placeholder: "Слот" });
@@ -260,7 +286,7 @@ function renderItems() {
     setClassCsv("equip", next);
   });
   body.append(equipList, form);
-  body.append(node("p", { className: "hint", text: "Каталог числовых ID извлечён из предоставленного сейва. Слоты и совместимость предметов проверяет игра." }));
+  body.append(node("p", { className: "hint", text: "ID найденных предметов взяты из сейва. ID PvP-набора выведены из той же схемы и по умолчанию не отмечены. Слоты и совместимость проверяет игра." }));
 }
 
 function renderOther() {
@@ -309,7 +335,13 @@ function render() {
   body.replaceChildren();
   ({ zones: renderZones, talents: renderTalents, codex: renderCodex, achievements: renderAchievements,
     items: renderItems, other: renderOther, raw: renderRaw })[activeTab]();
-  $("#save-summary").textContent = `${model.lines.filter(Boolean).length} строк · ${model.list("items").length} предметов · ${model.keyed("seen").size} записей кодекса`;
+  const lines = model.lines.filter(Boolean).length;
+  const items = model.list("items").length;
+  const entries = model.keyed("seen").size;
+  $("#save-summary").textContent = localized(
+    `${lines} lines · ${items} items · ${entries} codex entries`,
+    `${lines} строк · ${items} предметов · ${entries} записей кодекса`,
+  );
   for (const tab of document.querySelectorAll(".tab")) tab.classList.toggle("active", tab.dataset.tab === activeTab);
 }
 
@@ -320,7 +352,8 @@ async function load(value, filename) {
     const plaintext = await decodeSave(value);
     model = new SaveModel(plaintext);
     sourceName = filename ? filename.replace(/\.(sav|txt)$/i, "") + "-edited.sav" : "AzerothSurvivors-edited.sav";
-    $("#format-status").textContent = isSealed(value) ? "RSE1 проверен" : "Открытый текст";
+    loadedFormat = isSealed(value) ? "RSE1 проверен" : "Открытый текст";
+    $("#format-status").textContent = t(loadedFormat);
     $("#format-status").classList.add("good");
     workspace.hidden = false;
     render();
@@ -346,7 +379,7 @@ async function exportSave(copy) {
       link.click();
       link.remove();
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      showMessage(`Скачан файл ${sourceName}.`, "success");
+      showMessage(localized(`Downloaded ${sourceName}.`, `Скачан файл ${sourceName}.`), "success");
     }
   } catch (error) {
     showMessage(error.message || "Не удалось экспортировать сохранение.", "error");
@@ -356,6 +389,18 @@ async function exportSave(copy) {
 }
 
 async function start() {
+  const languageSelect = $("#language-select");
+  languageSelect.value = currentLanguage();
+  localizeStatic();
+  languageSelect.addEventListener("change", () => {
+    setLanguage(languageSelect.value);
+    localizeStatic();
+    if (model) {
+      $("#format-status").textContent = t(loadedFormat);
+      render();
+      showMessage("Сохранение открыто. Оригинал не изменён.", "success");
+    }
+  });
   try {
     const response = await fetch("./data/catalog.json");
     if (!response.ok) throw new Error(`HTTP ${response.status}`);

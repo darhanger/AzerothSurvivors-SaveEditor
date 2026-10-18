@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Локальный редактор сохранений Azeroth Survivors. Импорт RSE1, редактирование прогресса и экспорт .sav.">
-  <title>Azeroth Survivors — редактор сохранений</title>
+  <meta name="description" content="Local Azeroth Survivors save editor. Import RSE1, edit progress, and export .sav.">
+  <title>Azeroth Survivors — Save Editor</title>
   <link rel="stylesheet" href="./styles.css">
   <script type="module" src="./src/app.js"></script>
 </head>
@@ -13,48 +13,49 @@
   <header class="site-header shell">
     <div class="brand-mark" aria-hidden="true">AS</div>
     <div class="brand-copy"><strong>AZEROTH SURVIVORS</strong><span>SAVE EDITOR</span></div>
-    <span class="local-badge">Работает в браузере · без загрузки на сервер</span>
+    <span class="local-badge" data-i18n="Работает в браузере · без загрузки на сервер">Runs in your browser · no server upload</span>
+    <label class="language-switch" for="language-select"><span class="sr-only">Language / Язык</span><select id="language-select" aria-label="Language / Язык"><option value="en">English</option><option value="ru">Русский</option></select></label>
   </header>
 
   <main class="shell">
     <section class="hero">
-      <p class="eyebrow">АРХИВ ПРОГРЕССА / RSE1</p>
-      <h1>Настройте своё сохранение</h1>
-      <p>Откройте <code>.sav</code> или вставьте строку RSE1. Меняйте прогресс, проверяйте открытый текст и экспортируйте новый файл для импорта в игру.</p>
+      <p class="eyebrow" data-i18n="АРХИВ ПРОГРЕССА / RSE1">SAVE ARCHIVE / RSE1</p>
+      <h1 data-i18n="Настройте своё сохранение">Edit your save</h1>
+      <p data-i18n="Откройте .sav или вставьте строку RSE1. Меняйте прогресс, проверяйте открытый текст и экспортируйте новый файл для импорта в игру.">Open a .sav file or paste an RSE1 string. Edit progress, inspect the plaintext, and export a new file for the game.</p>
     </section>
 
     <section class="card import-card" aria-labelledby="import-title">
-      <div class="section-heading"><div><p class="eyebrow">01 / ИМПОРТ</p><h2 id="import-title">Загрузить сохранение</h2></div><span id="format-status" class="pill">Ожидание файла</span></div>
+      <div class="section-heading"><div><p class="eyebrow" data-i18n="01 / ИМПОРТ">01 / IMPORT</p><h2 id="import-title" data-i18n="Загрузить сохранение">Load a save</h2></div><span id="format-status" class="pill" data-i18n="Ожидание файла">Waiting for a file</span></div>
       <div class="import-grid">
-        <label id="drop-zone" class="drop-zone" for="save-file"><span class="upload-icon">⇧</span><strong>Выберите файл или перетащите сюда</strong><small>.sav или .txt, до 2 МБ</small><input id="save-file" type="file" accept=".sav,.txt,text/plain"></label>
-        <div class="paste-zone"><label for="save-input">Или вставьте строку / открытый текст</label><textarea id="save-input" rows="5" spellcheck="false" placeholder="RSE1:VnWO…&#10;или&#10;pick|…"></textarea><button id="load-text" class="button secondary" type="button">Открыть вставленный текст</button></div>
+        <label id="drop-zone" class="drop-zone" for="save-file"><span class="upload-icon">⇧</span><strong data-i18n="Выберите файл или перетащите сюда">Choose a file or drop it here</strong><small data-i18n=".sav или .txt, до 2 МБ">.sav / .txt, up to 2 MB</small><input id="save-file" type="file" accept=".sav,.txt,text/plain"></label>
+        <div class="paste-zone"><label for="save-input" data-i18n="Или вставьте строку / открытый текст">Or paste an RSE1 string / plaintext</label><textarea id="save-input" rows="5" spellcheck="false" placeholder="RSE1:VnWO…&#10;or&#10;pick|…"></textarea><button id="load-text" class="button secondary" type="button" data-i18n="Открыть вставленный текст">Open pasted text</button></div>
       </div>
-      <p id="message" class="message" role="status" aria-live="polite">Файл читается только на вашем устройстве.</p>
+      <p id="message" class="message" role="status" aria-live="polite" data-i18n="Файл читается только на вашем устройстве.">The file is read only on your device.</p>
     </section>
 
     <section id="workspace" class="workspace" hidden>
       <div class="workspace-top">
-        <div><p class="eyebrow">02 / РЕДАКТОР</p><h2>Прогресс аккаунта</h2><p id="save-summary" class="muted"></p></div>
-        <div class="export-actions"><button id="copy-save" class="button secondary" type="button">Скопировать RSE1</button><button id="download-save" class="button primary" type="button">Скачать .sav</button></div>
+        <div><p class="eyebrow" data-i18n="02 / РЕДАКТОР">02 / EDITOR</p><h2 data-i18n="Прогресс аккаунта">Account progress</h2><p id="save-summary" class="muted"></p></div>
+        <div class="export-actions"><button id="copy-save" class="button secondary" type="button" data-i18n="Скопировать RSE1">Copy RSE1</button><button id="download-save" class="button primary" type="button" data-i18n="Скачать .sav">Download .sav</button></div>
       </div>
       <div class="editor-layout">
-        <nav class="tabs" aria-label="Разделы редактора">
-          <button class="tab active" data-tab="zones" type="button">Зоны</button>
-          <button class="tab" data-tab="talents" type="button">Таланты</button>
-          <button class="tab" data-tab="codex" type="button">Кодекс</button>
-          <button class="tab" data-tab="achievements" type="button">Достижения</button>
-          <button class="tab" data-tab="items" type="button">Предметы и экипировка</button>
-          <button class="tab" data-tab="other" type="button">Прочее</button>
-          <button class="tab" data-tab="raw" type="button">Открытый текст</button>
+        <nav class="tabs" aria-label="Editor sections">
+          <button class="tab active" data-tab="zones" type="button" data-i18n="Зоны">Zones</button>
+          <button class="tab" data-tab="talents" type="button" data-i18n="Таланты">Talents</button>
+          <button class="tab" data-tab="codex" type="button" data-i18n="Кодекс">Codex</button>
+          <button class="tab" data-tab="achievements" type="button" data-i18n="Достижения">Achievements</button>
+          <button class="tab" data-tab="items" type="button" data-i18n="Предметы и экипировка">Items and equipment</button>
+          <button class="tab" data-tab="other" type="button" data-i18n="Прочее">Other</button>
+          <button class="tab" data-tab="raw" type="button" data-i18n="Открытый текст">Plaintext</button>
         </nav>
         <div class="panel card">
           <div id="panel-header" class="panel-header"></div>
           <div id="panel-body"></div>
         </div>
       </div>
-      <p class="footnote">Импорт в игру заменяет текущий прогресс. Сохраните оригинальный файл до проверки результата в игре. Неизвестные строки сохраняются при редактировании через формы.</p>
+      <p class="footnote" data-i18n="Импорт в игру заменяет текущий прогресс. Сохраните оригинальный файл до проверки результата в игре. Неизвестные строки сохраняются при редактировании через формы.">Importing into the game replaces current progress. Keep the original file until you verify the result in game. Unknown lines are preserved when editing through forms.</p>
     </section>
   </main>
-  <footer class="shell footer"><span>Независимый инструмент для Azeroth Survivors</span><span>Формат RSE1 · локальная обработка</span></footer>
+  <footer class="shell footer"><span data-i18n="Независимый инструмент для Azeroth Survivors">Independent tool for Azeroth Survivors</span><span data-i18n="Формат RSE1 · локальная обработка">RSE1 format · local processing</span></footer>
 </body>
 </html>
